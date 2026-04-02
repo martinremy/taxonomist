@@ -39,6 +39,7 @@ This is an AI-assisted tool. Users download this repo, open it with their AI cod
 
 ### Core Principles
 
+- **Use the agents, not ad-hoc scripts**: Each workflow step has a dedicated agent in `agents/`. Always dispatch the appropriate agent (`agents/connect.md`, `agents/export.md`, `agents/analyze.md`, `agents/apply.md`) rather than writing inline code. The agents encode critical workflow logic — backups, logging, batch splitting, verification — that ad-hoc scripts will miss or poorly reimplement. The adapters in `lib/adapters/` are the transport layer; the agents are the orchestrators.
 - **Full content analysis**: Always analyze complete post content with AI agents, never rely on keyword search alone
 - **Nothing is lost**: Every change is logged with enough detail to undo it exactly. Pre-change backups are mandatory.
 - **Iterative**: The user approves every phase before the next one begins
