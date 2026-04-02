@@ -149,6 +149,17 @@ class TestRestApiCategoryMutations(unittest.TestCase):
         self.assertEqual(body['description'], 'Updated desc')
 
     @patch('urllib.request.urlopen')
+    def test_update_category_reparents(self, mock_urlopen):
+        """Reparenting a category via update must send the parent ID."""
+        mock_urlopen.return_value = _mock_response({'id': 11})
+        adapter = RestApiAdapter(CONFIG)
+        adapter.update_category(11, {'parent': 10})
+
+        req = mock_urlopen.call_args[0][0]
+        body = json.loads(req.data)
+        self.assertEqual(body['parent'], 10)
+
+    @patch('urllib.request.urlopen')
     def test_delete_category_uses_force(self, mock_urlopen):
         mock_urlopen.return_value = _mock_response({'deleted': True})
         adapter = RestApiAdapter(CONFIG)

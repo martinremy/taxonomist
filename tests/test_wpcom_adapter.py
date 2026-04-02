@@ -142,6 +142,23 @@ class TestWpcomCategoryMutations(unittest.TestCase):
         self.assertIn('/categories/slug:tech', req.full_url)
 
     @patch('urllib.request.urlopen')
+    def test_update_category_reparents(self, mock_urlopen):
+        """Reparenting a category via update must send the parent ID."""
+        mock_urlopen.side_effect = [
+            _mock_response({'categories': [
+                {'ID': 11, 'name': 'Jazz', 'slug': 'jazz', 'description': '',
+                 'post_count': 3, 'parent': 0},
+            ]}),
+            _mock_response({'ID': 11}),
+        ]
+        adapter = WpcomAdapter(CONFIG)
+        adapter.update_category(11, {'parent': 10})
+
+        req = mock_urlopen.call_args[0][0]
+        body = urllib.parse.parse_qs(req.data.decode())
+        self.assertEqual(body['parent'], ['10'])
+
+    @patch('urllib.request.urlopen')
     def test_delete_category_resolves_slug(self, mock_urlopen):
         mock_urlopen.side_effect = [
             _mock_response({'categories': [
