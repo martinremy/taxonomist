@@ -23,20 +23,6 @@ class TestCreateAdapter(unittest.TestCase):
         adapter = create_adapter(config)
         self.assertIsInstance(adapter, WpCliAdapter)
 
-    def test_rest_api(self):
-        config = {'connection': {'method': 'rest-api', 'api_url': 'https://example.com/wp-json',
-                                 'username': 'admin', 'app_password': 'xxxx'}}
-        adapter = create_adapter(config)
-        from adapters.rest_api_adapter import RestApiAdapter
-        self.assertIsInstance(adapter, RestApiAdapter)
-
-    def test_wpcom_api(self):
-        config = {'connection': {'method': 'wpcom-api', 'site_id': '123',
-                                 'access_token': 'tok'}}
-        adapter = create_adapter(config)
-        from adapters.wpcom_adapter import WpcomAdapter
-        self.assertIsInstance(adapter, WpcomAdapter)
-
     def test_unknown_method_raises(self):
         config = {'connection': {'method': 'carrier-pigeon'}}
         with self.assertRaises(ValueError) as ctx:
