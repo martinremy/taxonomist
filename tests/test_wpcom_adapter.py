@@ -1,0 +1,189 @@
+"""Tests for the WordPress.com API adapter."""
+
+import io
+import json
+import os
+import sys
+import unittest
+import urllib.parse
+from unittest.mock import MagicMock, patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from adapters.wpcom_adapter import WpcomAdapter
+
+
+def _mock_response(body, status=200):
+    """Create a mock HTTP response."""
+    data = json.dumps(body).encode() if not isinstance(body, bytes) else body
+    resp = MagicMock()
+    resp.status = status
+    resp.read.return_value = data
+    resp.__enter__ = lambda s: s
+    resp.__exit__ = MagicMock(return_value=False)
+    return resp
+
+
+CONFIG = {
+    'connection': {
+        'method': 'wpcom-api',
+        'site_id': '12345678',
+        'access_token': 'test-bearer-token',
+    }
+}
+
+
+class TestWpcomAuth(unittest.TestCase):
+    """Tests that requests carry correct Bearer auth headers."""
+
+    @patch('urllib.request.urlopen')
+    def test_bearer_auth_header(self, mock_urlopen):
+        mock_urlopen.return_value = _mock_response({'categories': []})
+        adapter = WpcomAdapter(CONFIG)
+        adapter.list_categories()
+
+        req = mock_urlopen.call_args[0][0]
+        auth = req.get_header('Authorization')
+        self.assertEqual(auth, 'Bearer test-bearer-token')
+
+    @patch('urllib.request.urlopen')
+    def test_uses_correct_base_url(self, mock_urlopen):
+        mock_urlopen.return_value = _mock_response({'categories': []})
+        adapter = WpcomAdapter(CONFIG)
+        adapter.list_categories()
+
+        req = mock_urlopen.call_args[0][0]
+        self.assertTrue(req.full_url.startswith(
+            'https://public-api.wordpress.com/rest/v1.1/sites/12345678/'
+        ))
+
+
+class TestWpcomListCategories(unittest.TestCase):
+    """Tests for list_categories() normalization."""
+
+    @patch('urllib.request.urlopen')
+    def test_normalizes_id_to_term_id(self, mock_urlopen):
+        """WP.com returns 'ID'; adapter must emit 'term_id'."""
+        mock_urlopen.return_value = _mock_response({'categories': [
+            {'ID': 5, 'name': 'Tech', 'slug': 'tech',
+             'description': 'Technology posts', 'post_count': 42, 'parent': 0},
+        ]})
+        adapter = WpcomAdapter(CONFIG)
+        cats = adapter.list_categories()
+
+        self.assertEqual(cats[0]['term_id'], 5)
+        self.assertNotIn('ID', cats[0])
+        self.assertEqual(cats[0]['name'], 'Tech')
+        self.assertEqual(cats[0]['count'], 42)
+
+    @patch('urllib.request.urlopen')
+    def test_empty_site(self, mock_urlopen):
+        mock_urlopen.return_value = _mock_response({'categories': []})
+        adapter = WpcomAdapter(CONFIG)
+        self.assertEqual(adapter.list_categories(), [])
+
+
+class TestWpcomCategoryMutations(unittest.TestCase):
+    """Tests for create, update, delete, and slug resolution."""
+
+    @patch('urllib.request.urlopen')
+    def test_create_category_returns_term_id(self, mock_urlopen):
+        mock_urlopen.return_value = _mock_response({'ID': 77, 'name': 'New Cat', 'slug': 'new-cat'})
+        adapter = WpcomAdapter(CONFIG)
+        term_id = adapter.create_category('New Cat', 'new-cat', 'A new category')
+
+        self.assertEqual(term_id, 77)
+        req = mock_urlopen.call_args[0][0]
+        self.assertIn('/categories/new', req.full_url)
+        body = urllib.parse.parse_qs(req.data.decode())
+        self.assertEqual(body['name'], ['New Cat'])
+
+    @patch('urllib.request.urlopen')
+    def test_update_category_resolves_slug(self, mock_urlopen):
+        """update_category takes a term_id but WP.com needs the slug in the URL."""
+        mock_urlopen.side_effect = [
+            _mock_response({'categories': [
+                {'ID': 5, 'name': 'Tech', 'slug': 'tech', 'description': '',
+                 'post_count': 10, 'parent': 0},
+            ]}),
+            _mock_response({'ID': 5}),
+        ]
+        adapter = WpcomAdapter(CONFIG)
+        adapter.update_category(5, {'description': 'Updated'})
+
+        req = mock_urlopen.call_args[0][0]
+        self.assertIn('/categories/slug:tech', req.full_url)
+
+    @patch('urllib.request.urlopen')
+    def test_delete_category_resolves_slug(self, mock_urlopen):
+        mock_urlopen.side_effect = [
+            _mock_response({'categories': [
+                {'ID': 5, 'name': 'Tech', 'slug': 'tech', 'description': '',
+                 'post_count': 10, 'parent': 0},
+            ]}),
+            _mock_response({'ID': 5}),
+        ]
+        adapter = WpcomAdapter(CONFIG)
+        adapter.delete_category(5)
+
+        req = mock_urlopen.call_args[0][0]
+        self.assertIn('/categories/slug:tech/delete', req.full_url)
+
+    @patch('urllib.request.urlopen')
+    def test_slug_resolution_unknown_id_raises(self, mock_urlopen):
+        mock_urlopen.return_value = _mock_response({'categories': []})
+        adapter = WpcomAdapter(CONFIG)
+        with self.assertRaises(ValueError) as ctx:
+            adapter.update_category(999, {'description': 'nope'})
+        self.assertIn('999', str(ctx.exception))
+
+    @patch('urllib.request.urlopen')
+    def test_get_default_category(self, mock_urlopen):
+        mock_urlopen.return_value = _mock_response({
+            'settings': {'default_category': 7}
+        })
+        adapter = WpcomAdapter(CONFIG)
+        self.assertEqual(adapter.get_default_category(), 7)
+
+    @patch('urllib.request.urlopen')
+    def test_set_post_categories(self, mock_urlopen):
+        mock_urlopen.return_value = _mock_response({'ID': 123})
+        adapter = WpcomAdapter(CONFIG)
+        adapter.set_post_categories(123, [1, 5, 9])
+
+        req = mock_urlopen.call_args[0][0]
+        body = urllib.parse.parse_qs(req.data.decode())
+        self.assertEqual(body['categories'], ['1,5,9'])
+
+
+class TestWpcomErrorHandling(unittest.TestCase):
+    """Tests for HTTP error responses."""
+
+    @patch('urllib.request.urlopen')
+    def test_401_includes_status_in_message(self, mock_urlopen):
+        from urllib.error import HTTPError
+        error_body = json.dumps({'error': 'invalid_token', 'message': 'Token expired'}).encode()
+        mock_urlopen.side_effect = HTTPError(
+            'https://public-api.wordpress.com/rest/v1.1/sites/123/categories',
+            401, 'Unauthorized', {}, io.BytesIO(error_body))
+        adapter = WpcomAdapter(CONFIG)
+
+        with self.assertRaises(Exception) as ctx:
+            adapter.list_categories()
+        self.assertIn('401', str(ctx.exception))
+
+    @patch('urllib.request.urlopen')
+    def test_html_error_page_doesnt_crash(self, mock_urlopen):
+        from urllib.error import HTTPError
+        html_body = b'<html><body>503 Service Unavailable</body></html>'
+        mock_urlopen.side_effect = HTTPError(
+            'https://public-api.wordpress.com/rest/v1.1/sites/123/categories',
+            503, 'Service Unavailable', {}, io.BytesIO(html_body))
+        adapter = WpcomAdapter(CONFIG)
+
+        with self.assertRaises(Exception) as ctx:
+            adapter.list_categories()
+        self.assertIn('503', str(ctx.exception))
+
+
+if __name__ == '__main__':
+    unittest.main()

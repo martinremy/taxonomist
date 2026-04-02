@@ -30,6 +30,13 @@ class TestCreateAdapter(unittest.TestCase):
         from adapters.rest_api_adapter import RestApiAdapter
         self.assertIsInstance(adapter, RestApiAdapter)
 
+    def test_wpcom_api(self):
+        config = {'connection': {'method': 'wpcom-api', 'site_id': '123',
+                                 'access_token': 'tok'}}
+        adapter = create_adapter(config)
+        from adapters.wpcom_adapter import WpcomAdapter
+        self.assertIsInstance(adapter, WpcomAdapter)
+
     def test_unknown_method_raises(self):
         config = {'connection': {'method': 'carrier-pigeon'}}
         with self.assertRaises(ValueError) as ctx:
