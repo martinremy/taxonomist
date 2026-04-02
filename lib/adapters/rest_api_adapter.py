@@ -1,7 +1,9 @@
 """WordPress REST API adapter using Application Passwords."""
 
 import base64
+import html
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -91,3 +93,57 @@ class RestApiAdapter:
         """Get the term ID of the site's default category."""
         data, _ = self._get_json('/wp/v2/settings')
         return data['default_category']
+
+    def _strip_html(self, text):
+        """Strip HTML tags, block comments, shortcodes, and collapse whitespace.
+
+        Replicates the behavior of export-posts.php:
+        wp_strip_all_tags() + preg_replace('/\\s+/', ' ', ...) + html_entity_decode()
+        """
+        # Remove WordPress block editor comments: <!-- wp:anything -->
+        text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
+        # Remove shortcodes: [gallery ids="1,2,3"]
+        text = re.sub(r'\[/?[^\]]+\]', '', text)
+        # Remove HTML tags
+        text = re.sub(r'<[^>]+>', '', text)
+        # Decode HTML entities
+        text = html.unescape(text)
+        # Collapse whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
+    def export_posts(self, output_path):
+        """Export all published posts to a JSON file."""
+        # Build category ID -> name/slug lookup
+        categories = self.list_categories()
+        id_to_name = {c['term_id']: c['name'] for c in categories}
+        id_to_slug = {c['term_id']: c['slug'] for c in categories}
+
+        posts = []
+        page = 1
+        while True:
+            data, resp = self._get_json(
+                f'/wp/v2/posts?per_page=100&page={page}&status=publish'
+                f'&_fields=id,title,content,date,categories,link'
+            )
+            for p in data:
+                cat_ids = p.get('categories', [])
+                cat_names = [id_to_name[cid] for cid in cat_ids if cid in id_to_name]
+                cat_slugs = [id_to_slug[cid] for cid in cat_ids if cid in id_to_name]
+                posts.append({
+                    'post_id': p['id'],
+                    'title': html.unescape(p['title']['rendered']),
+                    'date': p['date'],
+                    'content': self._strip_html(p['content']['rendered']),
+                    'categories': cat_names,
+                    'category_slugs': cat_slugs,
+                    'url': p['link'],
+                })
+            total_pages = int(resp.getheader('X-WP-TotalPages', '1'))
+            if page >= total_pages:
+                break
+            page += 1
+
+        with open(output_path, 'w') as f:
+            json.dump(posts, f)
+        return output_path
