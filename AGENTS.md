@@ -26,7 +26,7 @@ This is an AI-assisted tool. Users download this repo, open it with their AI cod
 
 1. **Connect** (dispatch `agents/connect.md`) — Detect and configure access to the WordPress site
 2. **Export** (dispatch `agents/export.md`) — Download all posts (full content) and categories locally
-3. **Backup** — Create a complete backup of the current taxonomy state before any changes
+3. **Backup** (handled by `agents/export.md` as a post-export step) — Create a complete backup of the current taxonomy state before any changes
 4. **Analyze** (dispatch `agents/analyze.md` per batch) — Use parallel AI agents to analyze every post's content and suggest optimal categories
 5. **Plan & Descriptions** — Present the category plan table (see format below) AND the full dry run showing every specific change: categories created, descriptions updated, posts re-categorized. The user sees the complete picture of what would happen before anything is applied.
 6. **Review** — Iterate with the user until the plan is right
