@@ -68,10 +68,11 @@ class RestApiAdapter:
             page += 1
         return categories
 
-    def create_category(self, name, slug, description=''):
+    def create_category(self, name, slug, description='', parent=0):
         """Create a new category. Returns the new term ID."""
         resp = self._request('POST', '/wp/v2/categories', {
             'name': name, 'slug': slug, 'description': description,
+            'parent': parent,
         })
         return json.loads(resp.read())['id']
 

@@ -67,10 +67,11 @@ class WpcomAdapter:
             })
         return categories
 
-    def create_category(self, name, slug, description=''):
+    def create_category(self, name, slug, description='', parent=0):
         """Create a new category. Returns the new term ID."""
         data = self._request('POST', '/categories/new', {
             'name': name, 'slug': slug, 'description': description,
+            'parent': parent,
         })
         return data['ID']
 

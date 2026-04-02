@@ -111,11 +111,13 @@ class WpCliAdapter:
         ids_str = ','.join(map(str, category_ids))
         return self._run_command(['post', 'term', 'set', str(post_id), 'category', ids_str])
 
-    def create_category(self, name, slug, description=''):
+    def create_category(self, name, slug, description='', parent=0):
         """Create a new category."""
         args = ['term', 'create', 'category', name, f'--slug={slug}']
         if description:
             args.append(f'--description={description}')
+        if parent:
+            args.append(f'--parent={parent}')
         return self._run_command(args)
 
     def delete_category(self, term_id):

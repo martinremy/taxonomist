@@ -111,6 +111,19 @@ class TestWpcomCategoryMutations(unittest.TestCase):
         self.assertIn('/categories/new', req.full_url)
         body = urllib.parse.parse_qs(req.data.decode())
         self.assertEqual(body['name'], ['New Cat'])
+        self.assertEqual(body['parent'], ['0'])
+
+    @patch('urllib.request.urlopen')
+    def test_create_child_category_sends_parent(self, mock_urlopen):
+        """Creating a child category must send the parent ID."""
+        mock_urlopen.return_value = _mock_response({'ID': 78, 'name': 'Jazz', 'slug': 'jazz'})
+        adapter = WpcomAdapter(CONFIG)
+        term_id = adapter.create_category('Jazz', 'jazz', 'Jazz music', parent=10)
+
+        self.assertEqual(term_id, 78)
+        req = mock_urlopen.call_args[0][0]
+        body = urllib.parse.parse_qs(req.data.decode())
+        self.assertEqual(body['parent'], ['10'])
 
     @patch('urllib.request.urlopen')
     def test_update_category_resolves_slug(self, mock_urlopen):
