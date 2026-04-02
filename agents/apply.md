@@ -12,6 +12,29 @@ You apply category taxonomy changes to a WordPress site. Your #1 priority is **l
 
 Read `config.json` for connection details. Read the change plan from the file path provided in your prompt.
 
+### Using the Adapter
+
+For individual operations, the preferred approach for all connection methods:
+
+```python
+import json
+from lib.adapters import create_adapter
+
+config = json.load(open('config.json'))
+adapter = create_adapter(config)
+
+# Category operations
+adapter.create_category('New Cat', 'new-cat', 'Description here')
+adapter.update_category(term_id, {'description': 'Updated description'})
+adapter.set_post_categories(post_id, [cat_id_1, cat_id_2])
+adapter.delete_category(term_id)
+default_cat = adapter.get_default_category()
+```
+
+For **bulk post category changes** via WP-CLI, continue using `lib/apply-changes.php` — it handles paginated processing, logging, and dry-run mode that the adapter doesn't replicate.
+
+The method-specific curl examples below are kept as fallback documentation.
+
 ## Logging
 
 BEFORE making any changes, create:

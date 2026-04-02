@@ -223,22 +223,36 @@ Or via REST API / WordPress.com API as appropriate for the connection method. Lo
 
 ## WordPress Access Adapters
 
-The intended abstraction is an adapter layer (`lib/adapters/`) so the same logic can work regardless of connection method. Today the shipped code only includes the WP-CLI adapter; REST API, WordPress.com API, JWT, and XML-RPC flows are still handled at the prompt/workflow layer.
+The adapter layer (`lib/adapters/`) provides a uniform Python interface regardless of connection method. Use the factory function to get the right adapter:
+
+```python
+from lib.adapters import create_adapter
+import json
+
+config = json.load(open('config.json'))
+adapter = create_adapter(config)
+```
+
+Implemented adapters:
+
+| Adapter | Connection Methods | Notes |
+|---------|-------------------|-------|
+| `WpCliAdapter` | `wp-cli-ssh`, `wp-cli-local` | Uses subprocess + PHP scripts |
+| `RestApiAdapter` | `rest-api` | WordPress REST API + Application Passwords |
+| `WpcomAdapter` | `wpcom-api` | WordPress.com / Jetpack REST API |
 
 Required operations:
 - `list_categories()` — Get all categories with counts and descriptions
-- `list_posts(fields)` — Get all published posts with specified fields
-- `get_post_content(id)` — Get full content of a specific post
-- `get_post_categories(id)` — Get categories for a post
-- `set_post_categories(id, categories)` — Set categories for a post
+- `export_posts(output_path)` — Export all posts with content, categories, and slugs to JSON
+- `set_post_categories(id, category_ids)` — Set categories for a post
 - `create_category(name, slug, description)` — Create a new category
 - `update_category(id, fields)` — Update category name/slug/description
 - `delete_category(id)` — Delete a category
-- `export_all()` — Bulk export all posts with content and categories
+- `get_default_category()` — Get the default category term ID
 
 ## Notes for Contributors
 
 - This tool is designed to be driven by an AI coding assistant, not run as a standalone script
 - The AGENTS.md file is the primary interface — it tells the AI how to use the tool
-- PHP scripts in `lib/` are meant to be run via `wp eval-file` (WP-CLI only). For REST API and WordPress.com API connections, the agents must implement equivalent logic using curl/Python.
+- PHP scripts in `lib/` are meant to be run via `wp eval-file` (WP-CLI only). For REST API and WordPress.com API connections, use the Python adapters in `lib/adapters/`.
 - Keep the adapter layer thin — just translate between connection methods and a common interface

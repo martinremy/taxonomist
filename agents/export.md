@@ -12,6 +12,30 @@ You export all published posts and categories from a WordPress site for local an
 
 Read `config.json` to get the connection details. Use the appropriate adapter based on the connection method.
 
+### Using the Adapter
+
+The preferred approach for all connection methods:
+
+```python
+import json
+from lib.adapters import create_adapter
+
+config = json.load(open('config.json'))
+adapter = create_adapter(config)
+
+# Export categories
+cats = adapter.list_categories()
+with open('data/export/categories.json', 'w') as f:
+    json.dump(cats, f, indent=2)
+
+# Export posts
+adapter.export_posts('data/export/posts.json')
+```
+
+This works for WP-CLI, REST API, and WordPress.com connections. The adapter handles pagination, HTML stripping, and field normalization internally.
+
+The method-specific instructions below are kept as fallback documentation.
+
 ## What to Export
 
 ### Categories
