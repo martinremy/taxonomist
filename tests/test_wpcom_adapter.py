@@ -185,5 +185,161 @@ class TestWpcomErrorHandling(unittest.TestCase):
         self.assertIn('503', str(ctx.exception))
 
 
+class TestWpcomExportPosts(unittest.TestCase):
+    """Tests for export_posts() with WP.com-specific response shapes."""
+
+    @patch('urllib.request.urlopen')
+    def test_converts_category_hash_to_lists(self, mock_urlopen):
+        """WP.com returns categories as a name-keyed hash, not an array."""
+        cats_response = _mock_response({'categories': [
+            {'ID': 3, 'name': 'Tech', 'slug': 'tech', 'description': '', 'post_count': 1, 'parent': 0},
+        ]})
+        posts_response = _mock_response({
+            'posts': [{
+                'ID': 42, 'title': 'My Post',
+                'content': '<p>Hello world</p>',
+                'date': '2024-06-15T10:30:00+00:00',
+                'categories': {
+                    'Tech': {'ID': 3, 'name': 'Tech', 'slug': 'tech'},
+                },
+                'URL': 'https://example.wordpress.com/my-post/',
+            }],
+            'meta': {},
+        })
+        mock_urlopen.side_effect = [cats_response, posts_response]
+
+        adapter = WpcomAdapter(CONFIG)
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
+            path = f.name
+        try:
+            adapter.export_posts(path)
+            with open(path) as f:
+                posts = json.load(f)
+            self.assertEqual(len(posts), 1)
+            p = posts[0]
+            self.assertEqual(p['post_id'], 42)
+            self.assertEqual(p['title'], 'My Post')
+            self.assertEqual(p['content'], 'Hello world')
+            self.assertEqual(p['categories'], ['Tech'])
+            self.assertEqual(p['category_slugs'], ['tech'])
+            self.assertEqual(p['url'], 'https://example.wordpress.com/my-post/')
+        finally:
+            os.unlink(path)
+
+    @patch('urllib.request.urlopen')
+    def test_page_handle_pagination(self, mock_urlopen):
+        """WP.com uses meta.next_page for cursor-based pagination."""
+        cats_response = _mock_response({'categories': []})
+        page1 = _mock_response({
+            'posts': [{
+                'ID': 1, 'title': 'A', 'content': 'a',
+                'date': '2024-01-01T00:00:00+00:00',
+                'categories': {}, 'URL': 'https://example.com/a/',
+            }],
+            'meta': {'next_page': 'cursor_token_abc'},
+        })
+        page2 = _mock_response({
+            'posts': [{
+                'ID': 2, 'title': 'B', 'content': 'b',
+                'date': '2024-01-02T00:00:00+00:00',
+                'categories': {}, 'URL': 'https://example.com/b/',
+            }],
+            'meta': {},
+        })
+        mock_urlopen.side_effect = [cats_response, page1, page2]
+
+        adapter = WpcomAdapter(CONFIG)
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
+            path = f.name
+        try:
+            adapter.export_posts(path)
+            with open(path) as f:
+                posts = json.load(f)
+            self.assertEqual(len(posts), 2)
+
+            # Verify second request used page_handle
+            second_posts_req = mock_urlopen.call_args_list[2][0][0]
+            self.assertIn('page_handle=cursor_token_abc', second_posts_req.full_url)
+        finally:
+            os.unlink(path)
+
+    @patch('urllib.request.urlopen')
+    def test_multiple_categories_on_post(self, mock_urlopen):
+        """Posts can have multiple categories in the hash."""
+        cats_response = _mock_response({'categories': []})
+        posts_response = _mock_response({
+            'posts': [{
+                'ID': 1, 'title': 'Test', 'content': 'body',
+                'date': '2024-01-01T00:00:00+00:00',
+                'categories': {
+                    'Tech': {'ID': 3, 'name': 'Tech', 'slug': 'tech'},
+                    'AI': {'ID': 7, 'name': 'AI', 'slug': 'ai'},
+                },
+                'URL': 'https://example.com/test/',
+            }],
+            'meta': {},
+        })
+        mock_urlopen.side_effect = [cats_response, posts_response]
+
+        adapter = WpcomAdapter(CONFIG)
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
+            path = f.name
+        try:
+            adapter.export_posts(path)
+            with open(path) as f:
+                posts = json.load(f)
+            self.assertEqual(sorted(posts[0]['categories']), ['AI', 'Tech'])
+            self.assertEqual(sorted(posts[0]['category_slugs']), ['ai', 'tech'])
+        finally:
+            os.unlink(path)
+
+    @patch('urllib.request.urlopen')
+    def test_empty_site(self, mock_urlopen):
+        cats_response = _mock_response({'categories': []})
+        posts_response = _mock_response({'posts': [], 'meta': {}})
+        mock_urlopen.side_effect = [cats_response, posts_response]
+
+        adapter = WpcomAdapter(CONFIG)
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
+            path = f.name
+        try:
+            adapter.export_posts(path)
+            with open(path) as f:
+                posts = json.load(f)
+            self.assertEqual(posts, [])
+        finally:
+            os.unlink(path)
+
+    @patch('urllib.request.urlopen')
+    def test_html_stripped_from_content(self, mock_urlopen):
+        cats_response = _mock_response({'categories': []})
+        posts_response = _mock_response({
+            'posts': [{
+                'ID': 1, 'title': 'Test',
+                'content': '<!-- wp:paragraph -->\n<p>Hello <b>world</b></p>\n<!-- /wp:paragraph -->',
+                'date': '2024-01-01T00:00:00+00:00',
+                'categories': {}, 'URL': 'https://example.com/test/',
+            }],
+            'meta': {},
+        })
+        mock_urlopen.side_effect = [cats_response, posts_response]
+
+        adapter = WpcomAdapter(CONFIG)
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as f:
+            path = f.name
+        try:
+            adapter.export_posts(path)
+            with open(path) as f:
+                posts = json.load(f)
+            self.assertEqual(posts[0]['content'], 'Hello world')
+        finally:
+            os.unlink(path)
+
+
 if __name__ == '__main__':
     unittest.main()
