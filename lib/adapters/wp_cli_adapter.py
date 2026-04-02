@@ -121,3 +121,15 @@ class WpCliAdapter:
     def delete_category(self, term_id):
         """Delete a category."""
         return self._run_command(['term', 'delete', 'category', str(term_id)])
+
+    def update_category(self, term_id, fields):
+        """Update a category's name, slug, or description."""
+        args = ['term', 'update', str(term_id), 'category']
+        for key, value in fields.items():
+            args.append(f'--{key}={value}')
+        return self._run_command(args)
+
+    def get_default_category(self):
+        """Get the term ID of the site's default category."""
+        output = self._run_command(['option', 'get', 'default_category'])
+        return int(output.strip())
