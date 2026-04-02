@@ -76,6 +76,21 @@ class TestWpcomListCategories(unittest.TestCase):
         self.assertEqual(cats[0]['count'], 42)
 
     @patch('urllib.request.urlopen')
+    def test_preserves_parent_child_hierarchy(self, mock_urlopen):
+        """Parent category IDs must survive normalization."""
+        mock_urlopen.return_value = _mock_response({'categories': [
+            {'ID': 10, 'name': 'Music', 'slug': 'music',
+             'description': '', 'post_count': 5, 'parent': 0},
+            {'ID': 11, 'name': 'Jazz', 'slug': 'jazz',
+             'description': '', 'post_count': 3, 'parent': 10},
+        ]})
+        adapter = WpcomAdapter(CONFIG)
+        cats = adapter.list_categories()
+
+        self.assertEqual(cats[0]['parent'], 0)
+        self.assertEqual(cats[1]['parent'], 10)
+
+    @patch('urllib.request.urlopen')
     def test_empty_site(self, mock_urlopen):
         mock_urlopen.return_value = _mock_response({'categories': []})
         adapter = WpcomAdapter(CONFIG)

@@ -85,6 +85,21 @@ class TestRestApiListCategories(unittest.TestCase):
         self.assertEqual(mock_urlopen.call_count, 2)
 
     @patch('urllib.request.urlopen')
+    def test_preserves_parent_child_hierarchy(self, mock_urlopen):
+        """Parent category IDs must survive normalization."""
+        api_cats = [
+            {'id': 10, 'name': 'Music', 'slug': 'music', 'description': '', 'count': 5, 'parent': 0},
+            {'id': 11, 'name': 'Jazz', 'slug': 'jazz', 'description': '', 'count': 3, 'parent': 10},
+        ]
+        mock_urlopen.return_value = _mock_response(api_cats,
+                                                   headers={'X-WP-TotalPages': '1'})
+        adapter = RestApiAdapter(CONFIG)
+        cats = adapter.list_categories()
+
+        self.assertEqual(cats[0]['parent'], 0)
+        self.assertEqual(cats[1]['parent'], 10)
+
+    @patch('urllib.request.urlopen')
     def test_empty_site_returns_empty_list(self, mock_urlopen):
         mock_urlopen.return_value = _mock_response([],
                                                    headers={'X-WP-TotalPages': '0'})
